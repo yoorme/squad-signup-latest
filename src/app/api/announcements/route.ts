@@ -60,7 +60,17 @@ export const GET = withErrorHandler(async (req: NextRequest) => {
       select: { readAt: true },
     });
 
-    return ok({ ...announcement, isRead: !!myRead });
+    return ok({
+      ...announcement,
+      comments: announcement.comments.map((c) => ({
+        id: c.id,
+        content: c.content,
+        createdAt: c.createdAt,
+        user: c.user,
+        isMine: c.user.id === user.id,
+      })),
+      isRead: !!myRead,
+    });
   }
 
   // 列表：普通队员强制只看未归档；管理员可筛选
