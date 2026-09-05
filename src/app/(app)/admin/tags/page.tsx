@@ -36,7 +36,7 @@ import type { AdminTagItem, TagType } from "@/types";
 const TAG_META: Record<TagType, { label: string; hasCategory?: boolean; hasFaction?: boolean; isEventTag?: boolean }> = {
   ability: { label: "能力", hasCategory: true },
   duty: { label: "职责" },
-  operator: { label: "干员", hasFaction: true },
+  operator: { label: "干员" },
   nature: { label: "赛事性质", isEventTag: true },
   name: { label: "赛事名称", isEventTag: true },
   squadNature: { label: "分队性质", isEventTag: true },
@@ -369,9 +369,6 @@ function SortableTagRow({
           <span className="win-chip" style={{ fontSize: 11 }}>
             {item.category === "INFANTRY" ? "步兵" : "载具"}
           </span>
-        )}
-        {item.faction && (
-          <span className="win-chip" style={{ fontSize: 11 }}>{item.faction}</span>
         )}
         {item.disabled && (
           <span className="win-chip" style={{ fontSize: 11, background: "rgba(209,52,56,0.1)", color: "var(--win-danger)", borderColor: "var(--win-danger)" }}>
