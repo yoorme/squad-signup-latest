@@ -1,0 +1,11 @@
+[Unit]
+Description=Run squad-signup notification tick every minute
+
+[Timer]
+OnCalendar=*-*-* *:*:00
+AccuracySec=5s
+Persistent=false
+Unit=squad-notify.service
+
+[Install]
+WantedBy=timers.target

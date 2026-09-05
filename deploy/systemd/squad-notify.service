@@ -1,0 +1,19 @@
+# 比赛临近提醒定时扫描（systemd timer 每分钟触发一次 /api/notifications/tick）
+#
+# 安装（主实例 MMR，端口 3000）：
+#   cp deploy/systemd/squad-notify.service /etc/systemd/system/
+#   cp deploy/systemd/squad-notify.timer   /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now squad-notify.timer
+#
+# 其他实例：复制 service 文件并修改 Description / EnvironmentFile / 端口
+# （参见 squad-notify-shuishangyue.service；timer 文件可共用一个，也可每实例一份）
+
+[Unit]
+Description=squad-signup notification tick (main)
+After=network.target squad-signup.service
+
+[Service]
+Type=oneshot
+# CRON_SECRET 从实例 .env 读取，避免写进单元文件
+EnvironmentFile=/opt/squad-signup/.env
+ExecStart=/bin/sh -c '/usr/bin/curl -fsS -m 50 -H "x-cron-secret: $CRON_SECRET" http://127.0.0.1:3000/api/notifications/tick'

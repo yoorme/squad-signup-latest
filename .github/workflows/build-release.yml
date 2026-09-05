@@ -1,0 +1,68 @@
+name: Build & Release
+
+# push 到 main 时在 GitHub Actions 上构建
+# 产物打包上传到 GitHub Release（tag=latest），服务器只需下载解压
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Build Next.js (standalone)
+        run: npx next build
+
+      - name: Assemble dist
+        run: |
+          # standalone 产物含精简 node_modules + server.js
+          # 补充 static 和 public 到 standalone 内（运行时需要）
+          mkdir -p .next/standalone/.next
+          cp -r .next/static .next/standalone/.next/static
+          cp -r public .next/standalone/public 2>/dev/null || mkdir -p .next/standalone/public
+
+          # 打包 standalone（运行时）+ prisma（迁移用）
+          mkdir -p dist
+          cp -r .next/standalone dist/standalone
+          cp -r prisma dist/prisma
+          tar -czf dist.tar.gz -C dist .
+
+      - name: Upload to GitHub Release (latest + 版本化归档)
+        run: |
+          # 覆盖式更新 latest release：服务器 update.sh 固定拉取此产物
+          gh release delete latest --yes --cleanup-tag 2>/dev/null || true
+          gh release create latest dist.tar.gz \
+            --title "Latest Build" \
+            --notes "Auto-built from commit ${{ github.sha }}" \
+            --target main
+
+          # 归档 build-<sha> 标签，更新异常时可回滚；仅保留最近 5 个
+          ARCHIVE_TAG="build-${GITHUB_SHA::7}"
+          gh release create "$ARCHIVE_TAG" dist.tar.gz \
+            --title "Build ${GITHUB_SHA::7}" \
+            --notes "Archived build from commit ${{ github.sha }}" \
+            --target main
+
+          # release list 默认按发布时间倒序，第 6 个起即为待清理的旧归档
+          gh release list --json tagName --jq '.[].tagName' \
+            | grep '^build-' | tail -n +6 | while read -r tag; do
+                [ -n "$tag" ] && gh release delete "$tag" --yes --cleanup-tag || true
+              done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

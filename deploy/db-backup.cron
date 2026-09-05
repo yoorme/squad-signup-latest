@@ -1,0 +1,7 @@
+# 战队数据库每日备份（放到 /etc/cron.d/squad-db-backup，无需执行权限）
+# 每日 03:17 备份 squad_signup 与 shuishangyue 到 /opt/backups/squad/，保留 7 天
+# 容器名/超级用户如变更请同步修改
+SHELL=/bin/bash
+17 3 * * * root docker exec 1Panel-postgresql-EplD pg_dump -U user_YiXQ7r --no-owner --no-privileges squad_signup | gzip > /opt/backups/squad/squad_signup-$(date +\%F).sql.gz
+18 3 * * * root docker exec 1Panel-postgresql-EplD pg_dump -U user_YiXQ7r --no-owner --no-privileges shuishangyue | gzip > /opt/backups/squad/shuishangyue-$(date +\%F).sql.gz
+20 3 * * * root find /opt/backups/squad -name '*.sql.gz' -mtime +7 -delete

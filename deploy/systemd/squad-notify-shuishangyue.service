@@ -1,0 +1,9 @@
+# YFD 实例（shuishangyue）的临近提醒扫描：端口 3001，环境文件指向实例 .env
+[Unit]
+Description=squad-signup notification tick (shuishangyue)
+After=network.target squad-signup-shuishangyue.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/opt/squad-signup/instances/shuishangyue/.env
+ExecStart=/bin/sh -c '/usr/bin/curl -fsS -m 50 -H "x-cron-secret: $CRON_SECRET" http://127.0.0.1:3001/api/notifications/tick'

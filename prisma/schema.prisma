@@ -1,0 +1,333 @@
+// Prisma schema for 三角洲行动战队赛事报名网站
+// 数据库：PostgreSQL（生产 Neon，本地可 docker）
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")        // 运行时用：Neon pooled 连接串（带 pgbouncer=true）
+  directUrl = env("DIRECT_URL")          // 迁移用：Neon 直连串（绕过 pgbouncer，支持 advisory lock）
+}
+
+// ============ 用户与权限 ============
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique // 完整用户名 = 战队前缀 + 昵称（前缀可为空）
+  nickname     String // 昵称部分（不含前缀）
+  passwordHash String
+  role         Role     @default(MEMBER)
+  disabled     Boolean  @default(false)
+  tokenVersion Int      @default(0) // App 令牌版本：改密/重置密码时 +1，旧 Bearer Token 立即失效
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  registrations      Registration[]
+  announcementReads  AnnouncementRead[]
+  eventReads         EventRead[]
+  comments           AnnouncementComment[]
+  announcements      Announcement[]
+  events             Event[]
+  invitationCodes    InvitationCode[]
+
+  abilities  UserAbility[]
+  duties     UserDuty[]
+  operators  UserOperator[]
+
+  devices             Device[]
+  notificationSetting NotificationSetting?
+  pushLogs            PushLog[]
+}
+
+enum Role {
+  ADMIN
+  MEMBER
+}
+
+// ============ 站点设置（战队管理）============
+// 单行表：id 固定为 "global"
+// teamPrefix 为空表示无前缀；存量部署的前缀由迁移回填 SQL 从历史用户名推导写入
+model SiteSetting {
+  id            String    @id @default("global")
+  teamPrefix    String    @default("") // 战队名称前缀（如 "XX丨"），用于用户名/标题/侧边栏
+  iconName      String? // 自定义战队图标文件名（UPLOAD_DIR 内），null = 使用默认图标
+  iconUpdatedAt DateTime? // 图标更新时间（用作 ETag，便于浏览器刷新缓存）
+  updatedAt     DateTime  @updatedAt
+}
+
+// ============ 能力 / 职责 / 干员 ============
+
+model Ability {
+  id        String         @id @default(cuid())
+  name      String
+  category  AbilityCategory
+  sortOrder Int            @default(0)
+  disabled  Boolean        @default(false)
+  users     UserAbility[]
+  @@unique([name, category])
+}
+
+enum AbilityCategory {
+  INFANTRY
+  VEHICLE
+}
+
+model UserAbility {
+  userId    String
+  abilityId String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ability   Ability @relation(fields: [abilityId], references: [id], onDelete: Cascade)
+  @@id([userId, abilityId])
+}
+
+model Duty {
+  id        String     @id @default(cuid())
+  name      String     @unique // 队长 / 指挥 / 无
+  sortOrder Int        @default(0)
+  disabled  Boolean    @default(false)
+  users     UserDuty[]
+}
+
+model UserDuty {
+  userId String
+  dutyId String
+  user   User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  duty   Duty  @relation(fields: [dutyId], references: [id], onDelete: Cascade)
+  @@id([userId, dutyId])
+}
+
+model Operator {
+  id        String         @id @default(cuid())
+  name      String         @unique
+  faction   String? // 阵营（可选，用于分组展示）
+  sortOrder Int            @default(0)
+  disabled  Boolean        @default(false)
+  users     UserOperator[]
+}
+
+model UserOperator {
+  userId     String
+  operatorId String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  operator   Operator @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  @@id([userId, operatorId])
+}
+
+// ============ 标签（赛事性质 / 赛事名称 / 分队性质）============
+
+model EventNature {
+  id        String   @id @default(cuid())
+  name      String   @unique // 正赛 / 训练赛 / 娱乐赛 / 其他
+  sortOrder Int      @default(0)
+  disabled  Boolean  @default(false)
+  events    Event[]
+}
+
+model EventName {
+  id        String   @id @default(cuid())
+  name      String   @unique // 百姓杯等
+  sortOrder Int      @default(0)
+  disabled  Boolean  @default(false)
+  events    Event[]
+}
+
+model SquadNature {
+  id        String   @id @default(cuid())
+  name      String   @unique // 步兵 / 载具 / 机动 / 指挥
+  sortOrder Int      @default(0)
+  disabled  Boolean  @default(false)
+  squads    Squad[]
+}
+
+// 赛事地图（攀升 / 烬区 / 风暴眼 / 临界点 / 堑壕战 / 断层 / 断轨）
+model EventMap {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  sortOrder Int      @default(0)
+  disabled  Boolean  @default(false)
+  events    Event[]
+}
+
+// ============ 邀请码 ============
+
+model InvitationCode {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  maxUses     Int
+  usedCount   Int      @default(0)
+  createdAt   DateTime @default(now())
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+}
+
+// ============ 公告 ============
+
+model Announcement {
+  id              String   @id @default(cuid())
+  title           String
+  contentMarkdown String
+  isArchived      Boolean  @default(false) // 归档：仅管理员可见（公告管理/公告列表的已归档 tab）
+  archivedAt      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  authorId        String
+  author          User     @relation(fields: [authorId], references: [id])
+  images          AnnouncementImage[]
+  reads           AnnouncementRead[]
+  comments        AnnouncementComment[]
+}
+
+model AnnouncementImage {
+  id             String   @id @default(cuid())
+  announcementId String
+  path           String // 上传图片的相对路径
+  sortOrder      Int      @default(0)
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+}
+
+// 公告阅读记录：仅用于导航红点（未读计数），无确认语义
+model AnnouncementRead {
+  userId         String
+  announcementId String
+  readAt         DateTime  @default(now())
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  @@id([userId, announcementId])
+}
+
+model AnnouncementComment {
+  id             String   @id @default(cuid())
+  announcementId String
+  userId         String
+  content        String
+  createdAt      DateTime @default(now())
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ============ 赛事 / 分队 / 报名 ============
+
+model Event {
+  id            String      @id @default(cuid())
+  title         String // 冗余字段，由 name + nature + 时间组合生成，便于显示
+  eventTime     DateTime
+  natureId      String
+  nameId        String? // 赛事名称（可选：null 表示"未知"，不展示名称）
+  customName    String? // 自定义临时名称（"其他"时管理员输入，最少 1 字符）
+  mapId         String? // 赛事地图（可选，未选择时为 null）
+  opponent      String? // 对手（创建时必填，展示时拼接在性质后）
+  requiredCount Int
+  format        EventFormat? // 赛制：BO3 / BO5 / R2，null 表示未知（不展示）
+  status        EventStatus @default(UPCOMING)
+  createdAt     DateTime    @default(now())
+  createdById   String
+  createdBy     User        @relation(fields: [createdById], references: [id])
+  nature        EventNature @relation(fields: [natureId], references: [id])
+  name          EventName?  @relation(fields: [nameId], references: [id])
+  map           EventMap?   @relation(fields: [mapId], references: [id])
+  squads        Squad[]
+  registrations Registration[]
+  reads         EventRead[]
+}
+
+// 赛事已读记录（用户查看过赛事详情后标记，用于导航红点）
+model EventRead {
+  userId    String
+  eventId   String
+  readAt    DateTime @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event     Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  @@id([userId, eventId])
+}
+
+enum EventFormat {
+  BO3
+  BO5
+  R2
+}
+
+enum EventStatus {
+  UPCOMING
+  ARCHIVED
+}
+
+model Squad {
+  id           String         @id @default(cuid())
+  eventId      String
+  natureId     String
+  index        Int // 队伍序号（1, 2, 3...）
+  capacity     Int            @default(4)
+  event        Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  nature       SquadNature    @relation(fields: [natureId], references: [id])
+  registrations Registration[]
+  @@unique([eventId, index])
+}
+
+model Registration {
+  id           String    @id @default(cuid())
+  eventId      String
+  userId       String
+  squadId      String? // null = 替补
+  isSubstitute Boolean   @default(false)
+  status       RegStatus @default(REGISTERED)
+  createdAt    DateTime  @default(now())
+  event        Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  squad        Squad?    @relation(fields: [squadId], references: [id], onDelete: SetNull)
+
+  // 取消报名为软删除（status=CANCELLED，保留记录便于审计与重复报名复活）。
+  // "同一用户同一赛事最多一条有效报名"由部分唯一索引保证（见 migration
+  // 20260802000000_registration_soft_delete），Prisma 无法声明部分索引故此处无 @@unique。
+}
+
+enum RegStatus {
+  REGISTERED
+  CANCELLED
+}
+
+// ============ 移动端推送（App）============
+
+// App 设备绑定：一个用户可在多台设备登录，各设备持有独立的极光 registration_id
+model Device {
+  id             String         @id @default(cuid())
+  userId         String
+  platform       DevicePlatform @default(ANDROID)
+  registrationId String // 极光 JPush registration_id（设备维度唯一）
+  model          String? // 设备型号（展示用，可选）
+  appVersion     String? // App 版本（排查问题用，可选）
+  enabled        Boolean        @default(true) // false = 用户在该设备关闭推送或解绑
+  lastSeenAt     DateTime       @default(now())
+  createdAt      DateTime       @default(now())
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, registrationId])
+}
+
+enum DevicePlatform {
+  ANDROID
+  IOS
+}
+
+// 用户通知设置（1:1，懒创建：读取时无记录则视为全默认值）
+model NotificationSetting {
+  userId              String   @id
+  notifyNewEvent      Boolean  @default(true) // 新比赛发布通知
+  notifyEventReminder Boolean  @default(true) // 已报名比赛临近提醒
+  reminderLeadMinutes Int      @default(60) // 提前提醒分钟数（15/30/60/120）
+  notifyAnnouncement  Boolean  @default(true) // 新公告通知
+  updatedAt           DateTime @updatedAt
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// 推送发送日志：userId + dedupKey 唯一，用于临近提醒等场景的服务端去重
+model PushLog {
+  id       String   @id @default(cuid())
+  userId   String
+  dedupKey String // 如 event_reminder:<eventId>:<leadMinutes>
+  sentAt   DateTime @default(now())
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dedupKey])
+}
