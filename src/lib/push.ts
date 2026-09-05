@@ -99,13 +99,18 @@ async function pushToUsers(
 
 // ============ 业务推送（调用方 fire-and-forget：void pushXxx().catch(...)）============
 
-// 新赛事发布：推送给开启「新比赛通知」的用户
+// 新赛事发布：推送给开启「新比赛通知」的用户（未设置过的用户默认开启）
 export async function pushNewEvent(eventId: string, title: string, timeText: string): Promise<void> {
-  const settings = await prisma.notificationSetting.findMany({
-    where: { notifyNewEvent: true, user: { disabled: false } },
-    select: { userId: true },
+  const users = await prisma.user.findMany({
+    where: { disabled: false },
+    select: {
+      id: true,
+      notificationSetting: { select: { notifyNewEvent: true } },
+    },
   });
-  const userIds = settings.map((s) => s.userId);
+  const userIds = users
+    .filter((u) => u.notificationSetting?.notifyNewEvent ?? true)
+    .map((u) => u.id);
   const sentCount = await pushToUsers(userIds, {
     title: "新比赛发布",
     content: title + (timeText ? `（${timeText}）` : ""),
@@ -125,16 +130,21 @@ export async function pushNewEvent(eventId: string, title: string, timeText: str
   }
 }
 
-// 新公告发布：推送给开启「公告通知」的用户
+// 新公告发布：推送给开启「公告通知」的用户（未设置过的用户默认开启）
 export async function pushNewAnnouncement(
   announcementId: string,
   title: string
 ): Promise<void> {
-  const settings = await prisma.notificationSetting.findMany({
-    where: { notifyAnnouncement: true, user: { disabled: false } },
-    select: { userId: true },
+  const users = await prisma.user.findMany({
+    where: { disabled: false },
+    select: {
+      id: true,
+      notificationSetting: { select: { notifyAnnouncement: true } },
+    },
   });
-  const userIds = settings.map((s) => s.userId);
+  const userIds = users
+    .filter((u) => u.notificationSetting?.notifyAnnouncement ?? true)
+    .map((u) => u.id);
   const sentCount = await pushToUsers(userIds, {
     title: "新公告",
     content: title,
