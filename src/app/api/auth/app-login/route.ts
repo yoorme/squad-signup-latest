@@ -29,7 +29,7 @@ export const POST = withErrorHandler(async (req: NextRequest) => {
   }
 
   const user = await verifyCredentials(username, password);
-  if (!user) return fail("用户名或密码错误", 401);
+  if (!user) return fail("用户不存在或者密码错误", 401);
 
   const dbUser = await prisma.user.findUnique({
     where: { id: user.id },

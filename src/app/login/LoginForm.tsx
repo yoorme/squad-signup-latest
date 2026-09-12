@@ -41,7 +41,7 @@ export function LoginForm({ teamPrefix, iconVersion }: LoginFormProps) {
     });
     setLoading(false);
     if (res?.error) {
-      toast("用户名或密码错误", "error");
+      toast("用户不存在或者密码错误", "error");
       return;
     }
     toast("登录成功", "success");
