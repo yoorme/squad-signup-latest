@@ -51,7 +51,7 @@ cleanup() {
 trap cleanup EXIT
 
 # ---------------- 全局配置 ----------------
-REPO="yoorme/squad-signup"
+REPO="yoorme/squad-signup-latest"
 BRANCH="${BRANCH:-main}"
 # 预构建产物下载地址（GitHub Release，由 GitHub Actions 自动构建上传）
 DIST_URL="https://github.com/${REPO}/releases/download/latest/dist.tar.gz"
